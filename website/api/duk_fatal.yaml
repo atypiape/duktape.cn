@@ -1,0 +1,23 @@
+name: duk_fatal
+
+proto: |
+  void duk_fatal(duk_context *ctx, const char *err_msg);
+
+summary: |
+  <p>Call fatal error handler with an optional message (<code>err_msg</code>
+  may be <code>NULL</code>).  Like all strings in Duktape, the error message
+  should be an UTF-8 string, although pure ASCII is strongly recommended.</p>
+
+  <p>A fatal error handler never returns and may e.g. exit the current
+  process.  Error catching points (like <code>try-catch</code> statements
+  and error catching API calls) are bypassed, and finalizers are not executed.
+  You should only call this function when a truly fatal, unrecoverable error
+  has occurred.</p>
+
+example: |
+  duk_fatal(ctx, "assumption failed");
+
+tags:
+  - error
+
+introduced: 1.0.0

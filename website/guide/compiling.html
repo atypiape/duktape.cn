@@ -1,0 +1,299 @@
+<h1 id="compiling">Compiling</h1>
+
+<h2>Overview</h2>
+
+<p>Duktape doesn't have an official Makefile or a build script: given the
+number of different portability targets, maintaining an official build
+script would be difficult.  Instead, you should add Duktape to your existing
+build process in whatever way is most natural.</p>
+
+<p>Duktape is compiled with a C or C++ compiler (C99 is recommended)
+and then linked to your program in some way; the exact details vary between
+platforms and toolchains.  For example, you can:</p>
+<ul>
+<li>Compile Duktape together with your program without an explicit linking
+    step.</li>
+<li>Compile Duktape as a static library, and link the static library with
+    your program.</li>
+<li>Compile Duktape as a dynamic library, and link the dynamic library with
+    your program (you'll need <code>DUK_OPT_DLL_BUILD</code>).</li>
+</ul>
+
+<p>There are two alternative distribution formats for the Duktape source:
+a single source file and separate source files.  The single source file
+version consists of <code>duktape.c</code>, <code>duktape.h</code>, and
+<code>duk_config.h</code>.  The separate source files version consists of
+<code>duktape.h</code>, <code>duk_config.h</code> and a set of separate
+source files.   The single source file version is preferred, but separate
+files work better with some toolchains.</p>
+
+<p>All Duktape API functions are potentially macros, and the implementation
+of a certain API primitive may change between a macro and an actual function
+even between compatible releases.  This has two implications:</p>
+<ul>
+<li><b>Include <code>duktape.h</code> in application code</b>.  This is
+    good practice in general, but without the header your compiler will
+    incorrectly assume that all Duktape API functions are actual functions
+    which will cause linking to fail.</li>
+<li><b>Compile Duktape and your application with the exactly same Duktape
+    version</b>.  Even compatible versions may be binary incompatible
+    because a function was changed into a macro or vice versa.</li>
+</ul>
+
+<p>Duktape has many features which can be controlled during compilation,
+see feature options below.  Some options after binary compatibility of
+Duktape and the application.  Because of this:</p>
+<ul>
+<li><b>Use the same feature options and the same compiler when compiling
+    Duktape and your application</b>.  This is especially important when
+    Duktape is compiled as a library in a separate step.</li>
+</ul>
+
+<h2>Recommended compiler options</h2>
+
+<p>If you compile Duktape with no compiler options, Duktape will detect the
+compiler and the platform automatically and select defaults appropriate in
+most cases.  Recommended compiler options (for GCC/clang, use similar options
+in your compiler):</p>
+<ul>
+<li><code>-std=c99</code>: recommended to ensure C99 semantics
+    which improve C type detection and allows Duktape to use variadic
+    macros</li>
+<li><code>-Os</code>: optimize for smallest footprint, which is usually
+    desired when embedding Duktape</li>
+<li><code>-fomit-frame-pointer</code>: omit frame pointer, further reduces
+    footprint but may interfere with debugging (leave out from debug builds)</li>
+<li><code>-fstrict-aliasing</code>: use strict aliasing rules, Duktape
+    is compatible with these and they improve the resulting C code</li>
+<li><code>-DDUK_OPT_DLL_BUILD</code>: needed when Duktape is built as a DLL
+    (the option is needed for both Duktape and application build)</li>
+<li>By default Duktape uses <code>setjmp()</code> and <code>longjmp()</code>
+    (or their variants) for internal long control transfers.  If you're
+    compiling with a C++ compiler you may want to use
+    <code>DUK_OPT_CPP_EXCEPTIONS</code> which causes Duktape to use C++
+    exceptions for long control transfers and allows scope-based resource
+    management (automatic destructors, etc) in Duktape/C functions to work
+    as expected.</li>
+</ul>
+
+<p>If you're using Duktape on a platform where Duktape's automatic feature
+detection doesn't (yet) work, you may need to force a specific byte order or
+alignment requirements with feature options described below.</p>
+
+<h2>Duktape feature defaults</h2>
+
+<p>Duktape feature defaults are, at a high level:</p>
+<ul>
+<li>Full Ecmascript E5/E5.1 compliance
+    (including the optional 
+    <a href="http://www.ecma-international.org/ecma-262/5.1/#sec-B">Annex B</a>
+    features), except for intentional real world compatibility deviations
+    (see <a href="#custombehavior">Custom behavior</a>)</li>
+<li>Khronos/ES6 typed array and Node.js Buffer support</li>
+<li>Some <a href="#es6features">features borrowed from ES6</a></li>
+<li>Packed value representation (8 bytes per value) when available,
+    unpacked value representation (usually 16 bytes per value) when not</li>
+<li>Reference counting and mark-and-sweep garbage collection</li>
+<li>Full error messages and tracebacks</li>
+<li>No debug printing, no asserts, etc</li>
+</ul>
+
+<p>Usually these automatic defaults are OK.  If you're working on a constrained
+platform, you may need to add specific options to reduce memory footprint or to
+minimize garbage collection pauses.</p>
+
+<h2>Feature options (DUK_OPT_xxx)</h2>
+
+<p>If you wish to modify the defaults, you can provide feature options in the
+form of <code>DUK_OPT_xxx</code> compiler defines.  These will be taken into
+account by the default <code>duk_config.h</code> file, which resolves the
+final internal features based on feature requests, compiler features, and
+platform features.  The full list of feature options is described in
+<a href="http://wiki.duktape.org/FeatureOptions.html">Duktape feature options</a>
+(if you're modifying <code>duk_config.h</code> directly, see
+<a href="http://wiki.duktape.org/ConfigOptions.html">Duktape config options</a>).</p>
+
+<p>See <a href="http://wiki.duktape.org/Configuring.html">Configuring Duktape for build</a>
+for more practical details.</p>
+
+<div class="note">
+If you use Duktape feature options, you must define the feature options both
+when compiling Duktape and when compiling any application code using the
+<code>duktape.h</code> header.  This is necessary because some feature options
+affect the binary compatibility of the Duktape API.
+</div>
+
+<h2>Suggested feature options for some environments</h2>
+
+<h3 id="timing-sensitive-options">Timing sensitive options</h3>
+
+<p>Timing sensitive applications include e.g. games.  For such environments
+steady, predictable performance is important, often more important than
+absolute performance.  Duktape provides some options to improve use in these
+environments; for instance, you can disable automatic mark-and-sweep and rely
+on reference counting and manually requested mark-and-sweep for garbage
+collection.</p>
+
+<p>See
+<a href="https://github.com/svaarala/duktape/blob/master/doc/timing-sensitive.rst">timing-sensitive.rst</a>
+for suggested feature options.</p>
+
+<h3 id="memory-constrained-options">Memory constrained options</h3>
+
+<p>Duktape can work in 256kB flash memory (code footprint) and 96kB system
+RAM (including Duktape and a minimal OS), and provides a lot of feature
+options to minimize memory footprint.  These feature options are intended
+for systems with less than 256kB of system RAM.</p>
+
+<p>See
+<a href="https://github.com/svaarala/duktape/blob/master/doc/low-memory.rst">low-memory.rst</a>
+for suggested feature options.</p>
+
+<h3 id="performance-sensitive-options">Performance sensitive options</h3>
+
+<p>The default Duktape build has reasonable performance options for most
+environments.  Even so there are some feature options which
+may be used to improve performance by e.g. enabling fast paths, enabling
+"fastint" support, or trading some API safety for performance.</p>
+
+<p>See
+<a href="https://github.com/svaarala/duktape/blob/master/doc/performance-sensitive.rst">performance-sensitive.rst</a>
+for suggested feature options.</p>
+
+<h2>DUK_USE_FATAL_HANDLER</h2>
+
+<p>The built-in default fatal error handler will write a debug log message
+(but <b>won't</b> write anything to <code>stdout</code> to <code>stderr</code>),
+and will then cause an <b>intentional segfault</b>; if that fails, it enters an
+infinite loop to ensure execution doesn't resume after a fatal error.</p>
+
+<p>This is usually not the best behavior for production applications which may
+already have better fatal error recovery mechanisms.  To replace the default fatal
+handler, see
+<a href="http://wiki.duktape.org/HowtoFatalErrors.html">How to handle fatal errors</a>.</p>
+
+<h2>Memory management alternatives</h2>
+
+<p>There are three supported memory management alternatives:</p>
+<ul>
+<li><b>Reference counting and mark-and-sweep (default)</b>: heap objects are
+    freed immediately when they become unreachable except for objects
+    participating in unreachable reference cycles.  Such objects are freed by
+    a periodic voluntary, stop the world mark-and-sweep collection.
+    Mark-and-sweep is also used as the emergency garbage collector if
+    memory allocation fails.</li>
+<li><b>Mark-and-sweep only</b>: reduces code footprint and memory footprint
+    (heap headers don't need to store a reference count), but there is more
+    memory usage variance than in the default case.  The frequency of voluntary,
+    stop the world mark-and-sweep collections is also higher than in the default
+    case where reference counting is expected to handle almost all memory
+    management.</li>
+<li><b>Reference counting only</b>: reduces code footprint and eliminates
+    garbage collection pauses, but has major limitations and is not recommended.
+    Objects in unreachable reference cycles are not collected until the Duktape
+    heap is destroyed.  Garbage created during debugger paused state is also not
+    collected until heap destruction.  This option will most likely be removed
+    in Duktape 2.x.</li>
+</ul>
+
+<p>When using only reference counting it is important to avoid creating
+unreachable reference cycles.  Reference cycles are usually easy to avoid in
+application code e.g. by using only forward pointers in data structures.  Even
+if reference cycles are necessary, garbage collection can be allowed to work
+simply by breaking the cycles before deleting the final references to such objects.
+For example, if you have a tree structure where nodes maintain references to
+both children and parents (creating reference cycles for each node) you could
+walk the tree and set the parent reference to <code>null</code> before deleting
+the final reference to the tree.</p>
+
+<p>Unfortunately every Ecmascript function instance is required to be in a
+reference loop with an automatic prototype object created for the function.
+You can break this loop manually if you wish.  For internal technical reasons,
+named function expressions are also in a reference loop; this loop cannot be
+broken from user code and only mark-and-sweep can collect such functions.
+See <a href="#limitations">Limitations</a>.</p>
+
+<h2 id="duktape-date-provider">Using an external Date provider</h2>
+
+<p>When porting to new or exotic platforms the Duktape built-in Date support
+may not work on the platform.  In such a case you can implement an external
+"Date provider" which allows you to provide the necessary date/time primitives
+without Duktape changes. See
+<a href="https://github.com/svaarala/duktape/blob/master/doc/datetime.rst">datetime.rst</a>.
+</p>
+
+<h2 id="duktape-cplusplus">Using a C++ compiler</h2>
+
+<p>Duktape works with both C and C++ compilers and applications.  You can
+compile Duktape and the application with a C or a C++ compiler in any
+combination.  Even so, it is recommended to compile both Duktape and the
+application with the same compiler (i.e. both with a C compiler or both
+with a C++ compiler) and with the same compiler options.</p>
+
+<p>The <code>duktape.h</code> header contains the necessary glue to make all
+of these combinations work.  Specifically, all symbols needed by Duktape
+public API are inside a <code>extern "C" { ... }</code> wrapper (active only
+if compiled with a C++ compiler).  This ensures that such symbols are defined
+and used without C++ name mangling.  Specifically:</p>
+
+<ul>
+<li>When compiling Duktape itself with a C++ compiler, symbols needed by
+    Duktape public API are not mangled.  Other Duktape internal symbols will
+    be mangled, but are not externally visible and should thus cause no
+    problems even if the application is compiled with a C compiler.</li>
+<li>When compiling an application with a C++ compiler, the wrapper ensures
+    that Duktape public API symbols used by the application are looked up
+    without mangling.</li>
+</ul>
+
+<p>If you mix C and C++ compilation, you should do the final linking with the
+C++ toolchain.  At least when mixing gcc/g++ you may encounter something like:</p>
+<pre>
+$ g++ -c -o duktape.o -Isrc/ src/duktape.c
+$ gcc -c -o duk_cmdline.o -Isrc/ examples/cmdline/duk_cmdline.c
+$ gcc -o duk duktape.o duk_cmdline.o -lm
+duktape.o:(.eh_frame+0x1ab): undefined reference to `__gxx_personality_v0'
+collect2: error: ld returned 1 exit status
+</pre>
+
+<p>One fix is to use <code>g++</code> for linking:</p>
+<pre>
+$ g++ -c -o duktape.o -Isrc/ src/duktape.c
+$ gcc -c -o duk_cmdline.o -Isrc/ examples/cmdline/duk_cmdline.c
+$ g++ -o duk duktape.o duk_cmdline.o -lm
+</pre>
+
+<p>Because <code>duktape.h</code> selects C/C++ data types needed by
+Duktape and also does other feature detection, mixing C and C++ compilers
+could theoretically cause the C and C++ compilers to end up with different
+active features or data types.  If that were to happen, Duktape and the
+application would be binary incompatible (which would be difficult to
+diagnose).  This is usually not an issue, but to avoid the potential, compile
+Duktape and the application with the same compiler.</p>
+
+<p>By default scope-based resource management (sometimes referred to
+as RAII) won't work in Duktape/C functions because Duktape uses
+<code>longjmp()</code> for internal long control transfers, bypassing
+C++ stack unwind mechanisms.  You can use <code>DUK_OPT_CPP_EXCEPTIONS</code>
+to cause Duktape to use C++ exceptions for internal long control transfers,
+which allows scope-based resource management to work in Duktape/C functions.</p>
+
+<h2 id="installing-system-wide">Installing Duktape as a system-wide library</h2>
+
+<p>Duktape can be installed as a system-wide library; see
+<a href="https://github.com/svaarala/duktape/blob/master/doc/system-install.rst">system-install.rst</a>.</p>
+
+<h2>Compiler warnings</h2>
+
+<p>Current goal is for the Duktape compile to be clean when:</p>
+<ul>
+<li>using a major compiler (e.g. gcc, clang, MSVC, mingw);</li>
+<li>the compiler is in C99 mode; and</li>
+<li>warnings are enabled (e.g. <code>-Wall</code> in gcc/clang).</li>
+</ul>
+
+<p>There are still some warnings present when you compile with
+<code>-Wextra</code> or equivalent option.</p>
+
+<p>There may be some warnings when compiling with a pre-C99 compiler
+(or a C99 compiler without a <code>-std=c99</code> option or similar).</p>
